@@ -66,24 +66,34 @@ namespace DelawareSimulator.SearchServices
                     QuerySearchService querySearchService = new QuerySearchService(configuration);
                     List<CorporationSearchResponse> searchList = querySearchService.ExecuteQuery(searchName);
 
-                    string boundary = $"uuid:{secureToken}";
-                    string start = "<http://tempuri.org/0>";
-                    string startInfo = "text/xml";
-                    string contentType = $"multipart/related; boundary=\"{boundary}\"; type=\"application/xop+xml\"; start=\"{start}\"; start-info=\"{startInfo}\"";
-
-                    string xmlContent = ResponseXMLSearchService.ToXml(clientAccountNum, packetNum, agentPONumber, secureToken, searchList);
-                    string multipartContent = CreateMultipartContent(boundary, start, xmlContent);
-
-                    return new ContentResult
+                    if (searchList.Count > 0)
                     {
-                        Content = multipartContent,
-                        ContentType = contentType,
-                        StatusCode = 200,
-                    };
+                        string boundary = $"uuid:{secureToken}";
+                        string start = "<http://tempuri.org/0>";
+                        string startInfo = "text/xml";
+                        string contentType = $"multipart/related; boundary=\"{boundary}\"; type=\"application/xop+xml\"; start=\"{start}\"; start-info=\"{startInfo}\"";
+
+                        string xmlContent = ResponseXMLSearchService.ToXml(clientAccountNum, packetNum, agentPONumber, secureToken, searchList);
+                        string multipartContent = CreateMultipartContent(boundary, start, xmlContent);
+
+                        return new ContentResult
+                        {
+                            Content = multipartContent,
+                            ContentType = contentType,
+                            StatusCode = 200,
+                        };
+                    }
+                    else
+                    {
+                        return NoContentResponse(secureToken, clientAccountNum, packetNum, agentPONumber);
+                    }
+
+                }
+                else
+                {
+                    return NoContentResponse(secureToken, clientAccountNum, packetNum, agentPONumber);
                 }
             }
-
-            return Content("No Data", "text/xml");
         }
 
         private string CreateMultipartContent(string boundary, string start, string xmlContent)
@@ -98,6 +108,24 @@ namespace DelawareSimulator.SearchServices
             sb.AppendLine("--" + boundary + "--");
 
             return sb.ToString();
+        }
+
+        private ContentResult NoContentResponse(string secureToken, string clientAccountNum, string packetNum, string agentPONumber)
+        {
+            string boundary = $"uuid:{secureToken}";
+            string start = "<http://tempuri.org/0>";
+            string startInfo = "text/xml";
+            string contentType = $"multipart/related; boundary=\"{boundary}\"; type=\"application/xop+xml\"; start=\"{start}\"; start-info=\"{startInfo}\"";
+
+            string xmlContent = ResponseXMLSearchService.ToXmlNoContent(clientAccountNum, packetNum, agentPONumber, secureToken);
+            string multipartContent = CreateMultipartContent(boundary, start, xmlContent);
+
+            return new ContentResult
+            {
+                Content = multipartContent,
+                ContentType = contentType,
+                StatusCode = 200,
+            };
         }
     }
 
@@ -133,6 +161,30 @@ namespace DelawareSimulator.SearchServices
                         )
                     )
                 )
+            );
+
+            return xml.ToString(SaveOptions.DisableFormatting);
+        }
+
+        public static string ToXmlNoContent(string clientAccountNum, string packetNum, string agentPONumber, string secureToken)
+        {
+            XNamespace soapenv = "http://schemas.xmlsoap.org/soap/envelope/";
+            XNamespace h = "Delaware.Ecorp.Web";
+            XNamespace i = "http://www.w3.org/2001/XMLSchema-instance";
+            XNamespace a = "http://schemas.datacontract.org/2004/07/Delaware.ICIS.XmlFiling.Types";
+
+            var xml = new XElement(soapenv + "Envelope",
+                new XAttribute(XNamespace.Xmlns + "s", soapenv),
+                new XElement(soapenv + "Header",
+                    new XElement(h + "agentNumber", new XAttribute(XNamespace.Xmlns + "h", h), clientAccountNum),
+                    new XElement(h + "agentPONumber", agentPONumber),
+                    new XElement(h + "attentionLine", new XAttribute(XNamespace.Xmlns + "i", i), new XAttribute(i + "nil", "true")),
+                    new XElement(h + "fileDateTime", new XAttribute(XNamespace.Xmlns + "i", i), new XAttribute(i + "nil", "true")),
+                    new XElement(h + "packetNumber", packetNum),
+                    new XElement(h + "receivedDateTime", DateTime.Now.ToString("yyyyMMdd")),
+                    new XElement(h + "successful", "true")
+                ),
+                new XElement(soapenv + "Body")
             );
 
             return xml.ToString(SaveOptions.DisableFormatting);

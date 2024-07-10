@@ -17,7 +17,7 @@ namespace DelawareSimulator.DbConnections
 
         public CorporationDetailsResponse ExecuteQuery(int? fileNumber)
         {
-            CorporationDetailsResponse corpDetailsResponse = new CorporationDetailsResponse();
+            CorporationDetailsResponse corpDetailsResponse = null;
 
             using (var conn = new MySqlConnection(_connectionString))
             {
