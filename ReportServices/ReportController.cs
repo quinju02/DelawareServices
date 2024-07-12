@@ -1,6 +1,4 @@
 ﻿using DelawareSimulator.DbConnections;
-using DelawareSimulator.SearchServices;
-using DelawareSimulator.TokenService;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Text;
@@ -15,79 +13,100 @@ namespace DelawareSimulator.ReportServices
         [HttpPost]
         public async Task<IActionResult> ReportRequest()
         {
-            using (StreamReader reader = new StreamReader(Request.Body))
+            if (Request.Headers["SoapAction"].ToString().Equals("Delaware.Ecorp.Web/PublicXMLService/SignOn"))
             {
-                string requestBody = await reader.ReadToEndAsync();
-                XDocument xmlDoc = XDocument.Parse(requestBody);
-                XNamespace soapenv = "http://schemas.xmlsoap.org/soap/envelope/";
-                XNamespace ns1 = "Delaware.Ecorp.Web";
-                XNamespace ns2 = "http://schemas.datacontract.org/2004/07/Delaware.ICIS.XmlFiling.Types";
+                string uuid = Guid.NewGuid().ToString("D").ToLower();
+                string boundary = $"uuid:{uuid}";
+                string start = "<http://tempuri.org/0>";
+                string startInfo = "text/xml";
+                string contentType = $"multipart/related; boundary=\"{boundary}\"; type=\"application/xop+xml\"; start=\"{start}\"; start-info=\"{startInfo}\"";
 
-                var clientAccountNumElement = xmlDoc
-                    .Element(soapenv + "Envelope")
-                    ?.Element(soapenv + "Header")
-                    ?.Element(ns1 + "ClientAccountNum");
+                string xmlContent = ResponseXMLReportService.ToXml(uuid);
+                string multipartContent = CreateMultipartContent(boundary, start, xmlContent);
 
-                var packetNumElement = xmlDoc
-                    .Element(soapenv + "Envelope")
-                    ?.Element(soapenv + "Header")
-                    ?.Element(ns1 + "PacketNum");
-
-                var agentPONumberElement = xmlDoc
-                    .Element(soapenv + "Envelope")
-                    ?.Element(soapenv + "Header")
-                    ?.Element(ns1 + "agentPONumber");
-
-                var secureTokenElement = xmlDoc
-                    .Element(soapenv + "Envelope")
-                    ?.Element(soapenv + "Header")
-                    ?.Element(ns1 + "secureToken");
-
-                var fileNameElement = xmlDoc
-                    .Element(soapenv + "Envelope")
-                    ?.Element(soapenv + "Body")
-                    ?.Element(ns1 + "corporationDetailsRequestDocument")
-                    ?.Element(ns2 + "fileNumber");
-
-                // Get the values as strings
-                string clientAccountNum = clientAccountNumElement?.Value;
-                string packetNum = packetNumElement?.Value;
-                string agentPONumber = agentPONumberElement?.Value;
-                string secureToken = secureTokenElement?.Value;
-                string fileNumber = fileNameElement?.Value;
-
-                if (!String.IsNullOrEmpty(fileNumber))
+                return new ContentResult
                 {
-                    IConfiguration configuration = new ConfigurationBuilder().AddJsonFile("appsettings.json", optional: false, reloadOnChange: true).Build();
-                    QueryReportService queryReportService = new QueryReportService(configuration);
-                    CorporationDetailsResponse corporationDetailsResponse = queryReportService.ExecuteQuery(Int32.Parse(fileNumber));
+                    Content = multipartContent,
+                    ContentType = contentType,
+                    StatusCode = 200,
+                };
+            }
+            else
+            {
+                using (StreamReader reader = new StreamReader(Request.Body))
+                {
+                    string requestBody = await reader.ReadToEndAsync();
+                    XDocument xmlDoc = XDocument.Parse(requestBody);
+                    XNamespace soapenv = "http://schemas.xmlsoap.org/soap/envelope/";
+                    XNamespace ns1 = "Delaware.Ecorp.Web";
+                    XNamespace ns2 = "http://schemas.datacontract.org/2004/07/Delaware.ICIS.XmlFiling.Types";
 
-                    if (corporationDetailsResponse != null)
+                    var clientAccountNumElement = xmlDoc
+                        .Element(soapenv + "Envelope")
+                        ?.Element(soapenv + "Header")
+                        ?.Element(ns1 + "ClientAccountNum");
+
+                    var packetNumElement = xmlDoc
+                        .Element(soapenv + "Envelope")
+                        ?.Element(soapenv + "Header")
+                        ?.Element(ns1 + "PacketNum");
+
+                    var agentPONumberElement = xmlDoc
+                        .Element(soapenv + "Envelope")
+                        ?.Element(soapenv + "Header")
+                        ?.Element(ns1 + "agentPONumber");
+
+                    var secureTokenElement = xmlDoc
+                        .Element(soapenv + "Envelope")
+                        ?.Element(soapenv + "Header")
+                        ?.Element(ns1 + "secureToken");
+
+                    var fileNameElement = xmlDoc
+                        .Element(soapenv + "Envelope")
+                        ?.Element(soapenv + "Body")
+                        ?.Element(ns1 + "corporationDetailsRequestDocument")
+                        ?.Element(ns2 + "fileNumber");
+
+                    // Get the values as strings
+                    string clientAccountNum = clientAccountNumElement?.Value;
+                    string packetNum = packetNumElement?.Value;
+                    string agentPONumber = agentPONumberElement?.Value;
+                    string secureToken = secureTokenElement?.Value;
+                    string fileNumber = fileNameElement?.Value;
+
+                    if (!String.IsNullOrEmpty(fileNumber))
                     {
-                        string boundary = $"uuid:{secureToken}";
-                        string start = "<http://tempuri.org/0>";
-                        string startInfo = "text/xml";
-                        string contentType = $"multipart/related; boundary=\"{boundary}\"; type=\"application/xop+xml\"; start=\"{start}\"; start-info=\"{startInfo}\"";
+                        IConfiguration configuration = new ConfigurationBuilder().AddJsonFile("appsettings.json", optional: false, reloadOnChange: true).Build();
+                        QueryReportService queryReportService = new QueryReportService(configuration);
+                        CorporationDetailsResponse corporationDetailsResponse = queryReportService.ExecuteQuery(Int32.Parse(fileNumber));
 
-                        string xmlContent = ResponseXMLReportService.ToXml(clientAccountNum, packetNum, agentPONumber, secureToken, corporationDetailsResponse);
-                        string multipartContent = CreateMultipartContent(boundary, start, xmlContent);
-
-                        return new ContentResult
+                        if (corporationDetailsResponse != null)
                         {
-                            Content = multipartContent,
-                            ContentType = contentType,
-                            StatusCode = 200,
-                        };
+                            string boundary = $"uuid:{secureToken}";
+                            string start = "<http://tempuri.org/0>";
+                            string startInfo = "text/xml";
+                            string contentType = $"multipart/related; boundary=\"{boundary}\"; type=\"application/xop+xml\"; start=\"{start}\"; start-info=\"{startInfo}\"";
+
+                            string xmlContent = ResponseXMLReportService.ToXml(clientAccountNum, packetNum, agentPONumber, secureToken, corporationDetailsResponse);
+                            string multipartContent = CreateMultipartContent(boundary, start, xmlContent);
+
+                            return new ContentResult
+                            {
+                                Content = multipartContent,
+                                ContentType = contentType,
+                                StatusCode = 200,
+                            };
+                        }
+                        else
+                        {
+                            return NoContentResponse(secureToken, clientAccountNum, packetNum, agentPONumber);
+                        }
+
                     }
                     else
                     {
                         return NoContentResponse(secureToken, clientAccountNum, packetNum, agentPONumber);
                     }
-
-                }
-                else
-                {
-                    return NoContentResponse(secureToken, clientAccountNum, packetNum, agentPONumber);
                 }
             }
         }
@@ -127,6 +146,35 @@ namespace DelawareSimulator.ReportServices
 
     public static class ResponseXMLReportService
     {
+        public static string ToXml(string uuid)
+        {
+            XNamespace soapenv = "http://schemas.xmlsoap.org/soap/envelope/";
+            XNamespace tem = "Delaware.Ecorp.Web";
+            XNamespace i = "http://www.w3.org/2001/XMLSchema-instance";
+            XNamespace a = "http://schemas.datacontract.org/2004/07/Delaware.ICIS.XmlFiling.Types";
+            XNamespace h = "Delaware.Ecorp.Web";
+
+            var xml = new XElement(soapenv + "Envelope",
+                new XAttribute(XNamespace.Xmlns + "s", soapenv),
+                new XElement(soapenv + "Header",
+                    new XElement(h + "successful", new XAttribute(XNamespace.Xmlns + "h", h), "true")
+                ),
+                new XElement(soapenv + "Body",
+                    new XElement(tem + "signOnResponse",
+                        new XElement(tem + "errors",
+                            new XAttribute(XNamespace.Xmlns + "a", a),
+                            new XAttribute(XNamespace.Xmlns + "i", i),
+                            new XAttribute(i + "nil", "true")
+                        ),
+                        new XElement(tem + "secureToken", uuid),
+                        new XElement(tem + "signOnTime", DateTime.Now.ToString("HH:mm:ss.ffff"))
+                    )
+                )
+            );
+
+            return xml.ToString(SaveOptions.DisableFormatting);
+        }
+
         public static string ToXml(string clientAccountNum, string packetNum, string agentPONumber, string secureToken, CorporationDetailsResponse corporationDetailsResponse)
         {
             XNamespace soapenv = "http://schemas.xmlsoap.org/soap/envelope/";
